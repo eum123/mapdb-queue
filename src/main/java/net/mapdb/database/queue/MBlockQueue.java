@@ -1,4 +1,4 @@
 package net.mapdb.database.queue;
 
-public interface MBlockQueue {
+public interface MBlockQueue<T> {
 }

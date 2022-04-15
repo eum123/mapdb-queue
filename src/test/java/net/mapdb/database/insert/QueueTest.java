@@ -5,6 +5,7 @@ import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
 import org.mapdb.Serializer;
+import org.mapdb.serializer.GroupSerializer;
 
 import java.util.NavigableSet;
 import java.util.concurrent.Executors;
@@ -26,7 +27,7 @@ public class QueueTest {
 
         map.put("INDEX", 0L);
 
-        NavigableSet<String> queue = db.treeSet("queue", Serializer.STRING).createOrOpen();
+        NavigableSet<String> queue = db.treeSet("queue", GroupSerializer.STRING).createOrOpen();
 
 
         db.commit();

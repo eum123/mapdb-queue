@@ -12,7 +12,7 @@ public class MMapImpl<K, V> implements MMap<K, V> {
         this.map = map;
     }
 
-    public MMapImpl(HTreeMap<K, V> map, ExpireListener listner) {
+    public MMapImpl(HTreeMap<K, V> map, ExpireListener listener) {
         this.map = map;
         this.listener = listener;
     }
