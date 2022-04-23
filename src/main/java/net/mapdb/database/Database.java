@@ -12,6 +12,8 @@ public interface Database<K, V> {
 
     void close() throws Exception;
 
+    void commit();
+
     /**
      * Queue create or open
      * @param queueName

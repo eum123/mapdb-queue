@@ -1,18 +1,16 @@
 package net.mapdb.database.queue;
 
+import net.mapdb.database.Database;
 import net.mapdb.database.exception.UnsupportedClassType;
-import net.mapdb.database.util.GroupSerializerHelper;
 import net.mapdb.database.util.sequence.DatePrefixIntSequenceGenerator;
 import net.mapdb.database.util.sequence.Sequence;
-import org.mapdb.DB;
 import org.mapdb.HTreeMap;
-import org.mapdb.Serializer;
-import org.mapdb.serializer.GroupSerializer;
 
 import java.util.NavigableSet;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class MQueueImpl<T> implements MQueue<T> {
+    private final Database db;
     private final MQueueConfig config;
     private NavigableSet<String> index;
     private HTreeMap<String, T> data;
@@ -21,18 +19,11 @@ public class MQueueImpl<T> implements MQueue<T> {
 
     private ReentrantLock lock = new ReentrantLock();
 
-    public MQueueImpl(DB db, MQueueConfig config) throws UnsupportedClassType {
+    public MQueueImpl(Database db, NavigableSet<String> index, HTreeMap<String, T> data, MQueueConfig config) throws UnsupportedClassType {
+        this.db = db;
         this.config = config;
-
-        this.index = db.treeSet(config.getQueueName() + "_index", Serializer.STRING).createOrOpen();
-
-        GroupSerializer<T> serializer = GroupSerializerHelper.convertClassToGroupSerializer(config.getValueType());
-        data = db.hashMap(config.getQueueName())
-                .keySerializer(Serializer.STRING)
-                .valueSerializer(serializer)
-                .createOrOpen();
-
-
+        this.index = index;
+        this.data = data;
     }
 
     /**
@@ -46,7 +37,10 @@ public class MQueueImpl<T> implements MQueue<T> {
 
         try {
             String key = index.pollFirst();
-            return data.remove(key);
+            T value = data.remove(key);
+            db.commit();
+
+            return value;
         }finally {
             lock.unlock();
         }
@@ -72,13 +66,17 @@ public class MQueueImpl<T> implements MQueue<T> {
             String key = sequence.nextValue();
             index.add(key);
             data.put(key, value);
+
+            db.commit();
         }finally {
             lock.unlock();
         }
     }
 
     @Override
-    public void shutdown() throws Exception {
-        //empty
+    public void shutdown() throws Exception {}
+
+    public String getName() {
+        return config.getQueueName();
     }
 }

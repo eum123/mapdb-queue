@@ -1,13 +1,10 @@
 package net.mapdb.database.queue;
 
+import net.mapdb.database.Database;
 import net.mapdb.database.exception.UnsupportedClassType;
-import net.mapdb.database.util.GroupSerializerHelper;
 import net.mapdb.database.util.sequence.DatePrefixIntSequenceGenerator;
 import net.mapdb.database.util.sequence.Sequence;
-import org.mapdb.DB;
 import org.mapdb.HTreeMap;
-import org.mapdb.Serializer;
-import org.mapdb.serializer.GroupSerializer;
 
 import java.util.NavigableSet;
 import java.util.concurrent.TimeUnit;
@@ -15,6 +12,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class MBlockingQueueImpl<T> implements MBlockQueue<T> {
+    private final Database db;
     private final MQueueConfig config;
     private NavigableSet<String> index;
     private HTreeMap<String, T> data;
@@ -24,17 +22,11 @@ public class MBlockingQueueImpl<T> implements MBlockQueue<T> {
     private ReentrantLock lock = new ReentrantLock();
     private Condition condition = lock.newCondition();
 
-    public MBlockingQueueImpl(DB db, MQueueConfig config) throws UnsupportedClassType {
+    public MBlockingQueueImpl(Database db, NavigableSet<String> index, HTreeMap<String, T> data, MQueueConfig config) throws UnsupportedClassType {
+        this.db = db;
         this.config = config;
-
-        this.index = db.treeSet(config.getQueueName() + "_index", Serializer.STRING).createOrOpen();
-
-        GroupSerializer<T> serializer = GroupSerializerHelper.convertClassToGroupSerializer(config.getValueType());
-        data = db.hashMap(config.getQueueName())
-                .keySerializer(Serializer.STRING)
-                .valueSerializer(serializer)
-                .createOrOpen();
-
+        this.index = index;
+        this.data = data;
     }
 
     /**
@@ -120,5 +112,9 @@ public class MBlockingQueueImpl<T> implements MBlockQueue<T> {
         }finally {
             lock.unlock();
         }
+    }
+
+    public String getName() {
+        return config.getQueueName();
     }
 }

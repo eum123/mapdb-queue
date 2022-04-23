@@ -1,11 +1,8 @@
 package net.mapdb.database.map;
 
+import net.mapdb.database.Database;
 import net.mapdb.database.exception.UnsupportedClassType;
-import net.mapdb.database.util.GroupSerializerHelper;
-import org.mapdb.DB;
 import org.mapdb.HTreeMap;
-import org.mapdb.Serializer;
-import org.mapdb.serializer.GroupSerializer;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -18,7 +15,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class MMapImpl<K, V> implements MMap<K, V> {
-
+    private final Database db;
     private HTreeMap<K, Date> lifecycle;
     private HTreeMap<K, V> data;
     private final MMapConfig config;
@@ -28,22 +25,14 @@ public class MMapImpl<K, V> implements MMap<K, V> {
 
     private ExecutorService executorService;
 
-    public MMapImpl(DB db, MMapConfig config) throws UnsupportedClassType {
+    public MMapImpl(Database db, HTreeMap<K, Date> lifecycle, HTreeMap<K, V> data, MMapConfig config) throws UnsupportedClassType {
+        this.db = db;
         this.config = config;
 
-        GroupSerializer<K> keySerializer = GroupSerializerHelper.convertClassToGroupSerializer(config.getKeyType());
-        GroupSerializer<V> ValueSerializer = GroupSerializerHelper.convertClassToGroupSerializer(config.getValueType());
+        this.lifecycle = lifecycle;
+        this.data = data;
 
-        data = db.hashMap(config.getMapName())
-                .keySerializer(keySerializer)
-                .valueSerializer(ValueSerializer)
-                .createOrOpen();
-
-        lifecycle = db.hashMap(config.getMapName())
-                .keySerializer(keySerializer)
-                .valueSerializer(Serializer.DATE)
-                .createOrOpen();
-
+        //expirer
         if(this.config.getListener() != null) {
             executorService = Executors.newSingleThreadExecutor();
             executorService.submit(()-> {
@@ -61,6 +50,8 @@ public class MMapImpl<K, V> implements MMap<K, V> {
                            if(Duration.between(start, now).getSeconds() > 5) {
                                lifecycle.remove(k);
                                config.getListener().onExpiration(data.remove(k));
+
+                               db.commit();
                            }
                        }
                    });
@@ -85,6 +76,8 @@ public class MMapImpl<K, V> implements MMap<K, V> {
         try {
            lifecycle.put(key, new Date());
             data.put(key, value);
+
+            db.commit();
         } finally {
             lock.unlock();
         }
@@ -97,7 +90,9 @@ public class MMapImpl<K, V> implements MMap<K, V> {
             if (isExpirationCheck) {
                 condition.await();
             }
-            return data.remove(key);
+            V value = data.remove(key);
+            db.commit();
+            return value;
         } catch (InterruptedException e) {
             return null;
         } finally {
@@ -123,5 +118,9 @@ public class MMapImpl<K, V> implements MMap<K, V> {
             }
         }
 
+    }
+
+    public String getName() {
+        return config.getMapName();
     }
 }
