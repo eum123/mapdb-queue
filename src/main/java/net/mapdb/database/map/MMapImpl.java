@@ -46,12 +46,15 @@ public class MMapImpl<K, V> implements MMap<K, V> {
                            LocalDateTime start = new Date().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
                            LocalDateTime now = LocalDateTime.now();
 
-                           //TODO : 설정으로 전환
                            if(Duration.between(start, now).getSeconds() > 5) {
                                lifecycle.remove(k);
                                config.getListener().onExpiration(data.remove(k));
 
                                db.commit();
+                           } else {
+
+                               //TODO: 중간에 멈추는지 확인
+                               return;
                            }
                        }
                    });
