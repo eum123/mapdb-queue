@@ -1,34 +1,36 @@
 package net.mapdb.database;
 
 import net.mapdb.database.common.policy.CommitPolicy;
+import net.mapdb.database.exception.UnsupportedClassType;
 import net.mapdb.database.map.MMap;
-import net.mapdb.database.queue.MBlockQueue;
-import net.mapdb.database.queue.MQueue;
-import net.mapdb.database.queue.MQueueConfig;
-import net.mapdb.database.queue.MQueueImpl;
-import net.mapdb.database.util.GroupSerializerHelper;
-import org.checkerframework.checker.units.qual.K;
+import net.mapdb.database.map.MMapConfig;
+import net.mapdb.database.map.MMapImpl;
+import net.mapdb.database.queue.*;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
-import org.mapdb.HTreeMap;
-import org.mapdb.Serializer;
-import org.mapdb.serializer.GroupSerializer;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.NavigableSet;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
-public class FileDatabase<T> implements Database {
+public class FileDatabase<K, V> implements Database {
     private FileDatabaseConfig config ;
     private DB db;
+    private List<ManagedStore> list = new ArrayList();
 
     public FileDatabase(FileDatabaseConfig config){
         this.config = config;
     }
 
-    private CommitWorker worker = null;
+    private ExecutorService executor;
 
     public void start() throws Exception {
-        checkDirectory(config.getFilePath());
+        initDirectory(config.getFilePath());
 
         DBMaker.Maker maker = DBMaker.fileDB(Paths.get(config.getFilePath(), config.getFileName()).toFile());
         maker.transactionEnable();
@@ -37,24 +39,43 @@ public class FileDatabase<T> implements Database {
 
         //비동기 commit이면 별도 thread로 처리한다.
         if(config.getCommitPolicy().equals(CommitPolicy.ASYNC)) {
-            worker = new CommitWorker();
-            worker.start();
+
+            executor = Executors.newSingleThreadExecutor();
+            executor.submit(() -> {
+                db.commit();
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {}
+            });
         }
 
     }
 
     public void close() throws Exception {
         try {
-            if (worker != null) {
-                worker.terminate();
-
-                //db close 전까지 thread를 종료하기 위해 대기한다.
-                while (worker.isAlive()) {
-                    //TODO : logging worker alive message
-                    Thread.sleep(1000);
+            if (executor != null) {
+                try {
+                    executor.shutdown();
+                    //db close 전까지 thread를 종료하기 위해 대기한다.
+                    //TODO: 기준 시간 설정으로 변경
+                    executor.awaitTermination(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e){
+                }finally {
+                    if(!executor.isTerminated()) {
+                        executor.shutdownNow();
+                    }
                 }
-                //stop worker
             }
+
+            //queue, map 종료 처리
+            list.forEach(v -> {
+                try {
+                    v.shutdown();
+                } catch (Exception e) {
+                    //TODO: logging
+                }
+            });
 
         } finally {
             db.commit();
@@ -67,25 +88,31 @@ public class FileDatabase<T> implements Database {
      * @param queueName
      * @return
      */
-    public MQueue<T> getQueue(String queueName) throws Exception {
-        return getQueue(MQueueConfig.builder().queueName(queueName).valueType(String.class).build());
+    public MQueue<V> getQueue(String queueName) throws Exception {
+        return getQueue(MQueueConfig.builder().valueType(String.class).queueName(queueName).build());
     }
 
-    public MQueue<T> getQueue(MQueueConfig config) throws Exception {
+    public MQueue<V> getQueue(MQueueConfig config) throws Exception {
+        MQueue<V> queue = new MQueueImpl<V>(db, config);
 
-        GroupSerializer<T> serializer = GroupSerializerHelper.convertClassToGroupSerializer(config.getValueType());
+        list.add(queue);    //shutdown에 사용
 
-        return new MQueueImpl<T>(config, db.treeSet(config.getQueueName(), serializer).createOrOpen());
+        return queue;
+    }
+
+    public MBlockQueue<V> getBlockQueue(String queueName) throws UnsupportedClassType {
+       return getBlockQueue(MQueueConfig.builder().valueType(String.class).queueName(queueName).build());
     }
 
     /**
      * Blocking Queue create or open
-     * @param queueName
+     * @param config
      * @return
      */
-    public MBlockQueue<T> getBlockQueue(String queueName) {
-        NavigableSet<String> queue = db.treeSet("queue", Serializer.STRING).createOrOpen();
-        return null;
+    public MBlockQueue<V> getBlockQueue(MQueueConfig config) throws UnsupportedClassType {
+        MBlockQueue<V> queue = new MBlockingQueueImpl(db, config);
+        list.add(queue);    //shutdown에 사용
+        return queue;
     }
 
     /**
@@ -93,33 +120,18 @@ public class FileDatabase<T> implements Database {
      * @return
      */
     @Override
-    public MMap<K, T> getMap() {
-        HTreeMap<String, String> map = db.hashMap("sample")
-                .keySerializer(Serializer.STRING)
-                .valueSerializer(Serializer.STRING)
-                .createOrOpen();
-        return null;
+    public MMap<K, V> getMap(String name) throws UnsupportedClassType  {
+        return getMap(MMapConfig.builder().mapName(name).keyType(String.class).valueType(String.class).build());
     }
 
-    private boolean checkDirectory(String path) {
-        //TODO check directory;
-        return false;
+    public MMap<K, V> getMap(MMapConfig config) throws UnsupportedClassType {
+        MMap<K, V> map = new MMapImpl(db, config);
+        list.add(map); //shutdown에 사용
+        return map;
     }
 
-    class CommitWorker extends Thread {
-        private boolean isStart = true;
-        public void run() {
-            while(isStart) {
-                db.commit();
-
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {}
-            }
-        }
-        public void terminate() {
-            this.isStart = false;
-        }
+    private void initDirectory(String path) throws IOException {
+        Files.createDirectories(Paths.get(path));
     }
 
 }

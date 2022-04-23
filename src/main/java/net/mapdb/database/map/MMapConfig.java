@@ -7,6 +7,16 @@ import net.mapdb.database.listener.ExpireListener;
 
 @Builder
 public class MMapConfig {
+
+    @Getter
+    String mapName;
+
+    @Getter
+    private Class keyType;
+
+    @Getter
+    private Class valueType;
+
     //메시지 expirer 동작 주기
     @Builder.Default
     @Getter

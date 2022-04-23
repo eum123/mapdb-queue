@@ -1,4 +1,4 @@
-package net.mapdb.database.insert;
+package net.mapdb.database.test;
 
 import org.junit.jupiter.api.Test;
 import org.mapdb.DB;
