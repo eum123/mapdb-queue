@@ -2,7 +2,6 @@ package net.mapdb.database.map;
 
 import lombok.extern.slf4j.Slf4j;
 import net.mapdb.database.Database;
-import net.mapdb.database.exception.UnsupportedClassType;
 import org.mapdb.HTreeMap;
 
 import java.time.Duration;
@@ -28,7 +27,7 @@ public class MMapImpl<K, V> implements MMap<K, V> {
     private ExecutorService executorService;
     private boolean isStart = true;
 
-    public MMapImpl(Database db, HTreeMap<K, Long> lifecycle, HTreeMap<K, V> data, MMapConfig config) throws UnsupportedClassType {
+    public MMapImpl(Database db, HTreeMap<K, Long> lifecycle, HTreeMap<K, V> data, MMapConfig config) {
         this.db = db;
         this.config = config;
 
@@ -40,6 +39,9 @@ public class MMapImpl<K, V> implements MMap<K, V> {
             executorService = Executors.newSingleThreadExecutor();
             executorService.submit(()-> {
                 while(isStart) {
+
+                    long startTime = System.currentTimeMillis();
+
                     lock.lock();
                     try {
                         isExpirationCheck = true;
@@ -68,6 +70,8 @@ public class MMapImpl<K, V> implements MMap<K, V> {
                         isExpirationCheck = false;
                         condition.signalAll();
                         lock.unlock();
+
+                        log.debug("expiration search finish : {} ms", (System.currentTimeMillis() - startTime));
                     }
 
                     try {
@@ -93,6 +97,21 @@ public class MMapImpl<K, V> implements MMap<K, V> {
     }
 
     public V get(K key) {
+        lock.lock();
+        try {
+            if (isExpirationCheck) {
+                condition.await();
+            }
+            return data.get(key);
+
+        } catch (InterruptedException e) {
+            return null;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public V remove(K key) {
         lock.lock();
         try {
             if (isExpirationCheck) {

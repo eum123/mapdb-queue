@@ -7,5 +7,7 @@ public interface MMap<K, V> extends ManagedStore {
 
     V get(K key);
 
+    V remove(K key);
+
     int size();
 }

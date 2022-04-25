@@ -1,7 +1,6 @@
 package net.mapdb.database.queue;
 
 import net.mapdb.database.Database;
-import net.mapdb.database.exception.UnsupportedClassType;
 import net.mapdb.database.util.sequence.DatePrefixIntSequenceGenerator;
 import net.mapdb.database.util.sequence.Sequence;
 import org.mapdb.HTreeMap;
@@ -19,7 +18,7 @@ public class MQueueImpl<T> implements MQueue<T> {
 
     private ReentrantLock lock = new ReentrantLock();
 
-    public MQueueImpl(Database db, NavigableSet<String> index, HTreeMap<String, T> data, MQueueConfig config) throws UnsupportedClassType {
+    public MQueueImpl(Database db, NavigableSet<String> index, HTreeMap<String, T> data, MQueueConfig config) {
         this.db = db;
         this.config = config;
         this.index = index;
