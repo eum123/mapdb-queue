@@ -10,7 +10,7 @@ public class DatePrefixIntSequenceGenerator extends Sequence {
 	public DatePrefixIntSequenceGenerator(int minLength,
 										  int maxLength) {
 
-		this(DateTimeFormatter.ISO_DATE_TIME, minLength, maxLength);
+		this(DateTimeFormatter.ofPattern("yyyyMMddhhmmss"), minLength, maxLength);
 
 	}
 

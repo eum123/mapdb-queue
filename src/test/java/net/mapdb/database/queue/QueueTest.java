@@ -36,6 +36,30 @@ public class QueueTest {
 
         Assertions.assertEquals(0, queue.size());
     }
+
+    @Test
+    public void iteratorTest() throws Exception {
+        MQueue<String> queue = db.getQueue("Q1");
+
+
+        for(int i=0;i<100;i++) {
+            queue.push(String.valueOf(i));
+        }
+        Assertions.assertEquals(100, queue.size());
+
+
+
+
+        for(int i=0;i<100;i++) {
+            Assertions.assertEquals(String.valueOf(i), queue.poll());
+            System.out.println("i:" + i);
+
+        }
+
+        Assertions.assertEquals(0, queue.size());
+
+    }
+
     @AfterEach
     public void destory() throws Exception {
         db.close();

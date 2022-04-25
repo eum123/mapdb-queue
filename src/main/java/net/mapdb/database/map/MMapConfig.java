@@ -17,10 +17,12 @@ public class MMapConfig {
     @Getter
     private Class valueType;
 
-    //메시지 expirer 동작 주기
+    /**
+     * 만료 시간 설정 (second)
+     */
     @Builder.Default
     @Getter
-    private long interval = 1000;
+    private long expirationInterval = 3600;
 
     @Getter
     private ExpireListener listener;

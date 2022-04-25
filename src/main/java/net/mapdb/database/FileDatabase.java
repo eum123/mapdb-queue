@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.NavigableSet;
 import java.util.concurrent.ExecutorService;
@@ -31,11 +30,12 @@ public class FileDatabase<K, V> implements Database {
     private DB db;
     private List<ManagedStore> list = new ArrayList();
 
+    private ExecutorService executor;
+    private boolean isStart = true;
+
     public FileDatabase(FileDatabaseConfig config){
         this.config = config;
     }
-
-    private ExecutorService executor;
 
     public void start() throws Exception {
         initDirectory(config.getFilePath());
@@ -43,6 +43,9 @@ public class FileDatabase<K, V> implements Database {
         DBMaker.Maker maker = DBMaker.fileDB(Paths.get(config.getFilePath(), config.getFileName()).toFile());
         maker.transactionEnable();
         maker.fileChannelEnable();
+        maker.allocateStartSize(512L * 1024 * 1024);    //TODO: 설정으로 변경
+        maker.allocateIncrement(64L * 1024 * 1024);     //TODO: 설정으로 변경
+
         this.db = maker.make();
 
         //비동기 commit이면 별도 thread로 처리한다.
@@ -50,39 +53,42 @@ public class FileDatabase<K, V> implements Database {
 
             executor = Executors.newSingleThreadExecutor();
             executor.submit(() -> {
-                db.commit();
-                log.info("COMMIT !!");
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {}
+                while(isStart) {
+                    db.commit();
+                    log.info("COMMIT !!");
+                    try {
+                        //설정으로 변경
+                        TimeUnit.SECONDS.sleep(1);
+                    } catch (InterruptedException e) {
+                    }
+                }
             });
         }
         log.info("START FileDatabase {}/{}", config.getFilePath(), config.getFileName());
     }
 
     public void close() throws Exception {
+        isStart = false;
         try {
-            if (executor != null) {
-                try {
-                    executor.shutdown();
-                    //db close 전까지 thread를 종료하기 위해 대기한다.
-                    //TODO: 기준 시간 설정으로 변경
+            try {
+                if (executor != null) {
+                    executor.shutdownNow();
                     executor.awaitTermination(5, TimeUnit.SECONDS);
-                } catch (InterruptedException e){
-                }finally {
-                    if(!executor.isTerminated()) {
-                        executor.shutdownNow();
-                    }
+                    log.info("SHUTDOWN commit worker (isTerminated:{})", executor.isTerminated());
                 }
+            } catch (Exception e) {
+                log.error("commit worker shutdown fail", e);
             }
+
 
             //queue, map 종료 처리
             list.forEach(v -> {
                 try {
+                    log.info("SHUTDOWN [{}] doing...", v.getName());
                     v.shutdown();
-                    log.info("SHUTDOWN [{}] ...", v.getName());
+                    log.info("SHUTDOWN [{}] end !!", v.getName());
                 } catch (Exception e) {
-                    //TODO: logging
+                    log.error("{} worker shutdown fail", e);
                 }
             });
 
@@ -168,9 +174,9 @@ public class FileDatabase<K, V> implements Database {
                 .valueSerializer(ValueSerializer)
                 .createOrOpen();
 
-        HTreeMap<K, Date> lifecycle = db.hashMap(config.getMapName())
+        HTreeMap<K, Long> lifecycle = db.hashMap(config.getMapName() + "_lifecycle")
                 .keySerializer(keySerializer)
-                .valueSerializer(Serializer.DATE)
+                .valueSerializer(Serializer.LONG)
                 .createOrOpen();
 
         MMap<K, V> map = new MMapImpl(this, lifecycle, data, config);

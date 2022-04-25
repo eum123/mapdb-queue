@@ -3,9 +3,11 @@ package net.mapdb.database.test;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
+import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
 public class DurationTest {
@@ -31,4 +33,18 @@ public class DurationTest {
 
         System.out.println(d.getSeconds());
     }
+
+    @Test
+    public void durationMillTest() throws InterruptedException {
+        //  LocalDateTime start = LocalDateTime.of(new Date());
+        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), TimeZone.getDefault().toZoneId());
+        TimeUnit.SECONDS.sleep(1);
+
+        LocalDateTime now = LocalDateTime.now();
+
+        Duration d = Duration.between(start, now);
+
+        System.out.println(d.getSeconds());
+    }
+
 }
